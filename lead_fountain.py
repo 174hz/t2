@@ -27,8 +27,7 @@ time.sleep(1)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 # REPLACE THE 0 BELOW WITH YOUR CHAT ID FROM @userinfobot
-MY_CHAT_ID = "1556353947"
-" 
+MY_CHAT_ID = "1556353947" 
 
 if not TELEGRAM_TOKEN or not GOOGLE_API_KEY:
     print("❌ ERROR: Missing API keys!")
