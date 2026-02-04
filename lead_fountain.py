@@ -1,80 +1,58 @@
 import os
-import telebot
-import google.generativeai as genai
 import http.server
 import socketserver
 import threading
+import telebot
+import google.generativeai as genai
+import time
 
 # =========================================================
-# 0. RENDER HEALTH CHECK (The "Stay Alive" Hack)
+# 0. RENDER HEALTH CHECK (THE "IMMEDIATE" VERSION)
 # =========================================================
 def run_health_check():
-    # Render provides a PORT environment variable; we default to 10000
     port = int(os.environ.get("PORT", 10000))
     handler = http.server.SimpleHTTPRequestHandler
-    # This creates a tiny web server that listens for Render's "pings"
-    with socketserver.TCPServer(("0.0.0.0", port), handler) as httpd:
-        print(f"✅ Health check server running on port {port}")
-        httpd.serve_forever()
+    try:
+        with socketserver.TCPServer(("0.0.0.0", port), handler) as httpd:
+            print(f"✅ Health check server is ACTIVE on port {port}")
+            httpd.serve_forever()
+    except Exception as e:
+        print(f"Health check error: {e}")
 
-# Start the health check in the background so the bot can run simultaneously
+# START THE WEB SERVER IMMEDIATELY
 threading.Thread(target=run_health_check, daemon=True).start()
 
+# GIVE THE SERVER 1 SECOND TO WAKE UP
+time.sleep(1)
+
 # =========================================================
-# 1. SECURITY: LOAD API KEYS FROM ENVIRONMENT
+# 1. SECURITY & CONFIG
 # =========================================================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Safety Net: Stop the bot if keys are missing
 if not TELEGRAM_TOKEN or not GOOGLE_API_KEY:
-    print("❌ ERROR: Missing API keys! Please set TELEGRAM_TOKEN and GOOGLE_API_KEY in Render.")
+    print("❌ ERROR: Missing API keys!")
     exit(1)
 
-# =========================================================
-# 2. SETUP AI & BOT
-# =========================================================
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash')
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 print("🚀 Lead Fountain is starting up...")
 
-# =========================================================
-# 3. MESSAGE HANDLER (THE BRAIN)
-# =========================================================
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_name = message.from_user.first_name
-    print(f"📥 New message from {user_name}: {message.text}")
-    
-    # System Prompt: This tells the AI how to act
-    prompt = f"""
-    You are the professional AI sales assistant for 'Lead Fountain Roofing'. 
-    Your tone is friendly, expert, and local.
-    
-    GOAL: 
-    1. Acknowledge their roofing issue (repair, leak, replacement, etc.).
-    2. Ask for their Name (if not known) and the best Phone Number to reach them.
-    3. Keep it brief—no long paragraphs.
-    
-    Context:
-    User Name: {user_name}
-    User Message: {message.text}
-    """
-    
+    prompt = f"User {user_name} says: {message.text}. Respond as Lead Fountain Roofing assistant."
     try:
-        # Generate AI response
         response = model.generate_content(prompt)
         bot.reply_to(message, response.text)
-        print(f"📤 AI Response sent to {user_name}!")
-        
     except Exception as e:
         print(f"❌ AI Error: {e}")
-        bot.reply_to(message, "I'm here! Just checking my notes. How can I help with your roofing project today?")
 
 # =========================================================
-# 4. START THE ENGINE
+# 2. START BOT
 # =========================================================
-print("📡 Bot is now polling for messages...")
+print("📡 Bot is now polling...")
 bot.infinity_polling()
