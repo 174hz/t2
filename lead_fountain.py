@@ -23,11 +23,14 @@ def run_health_check():
 threading.Thread(target=run_health_check, daemon=True).start()
 time.sleep(1)
 
-# API KEYS
+# API KEYS (Ensure these are set in Render Environment Variables)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-# REPLACE THE 0 BELOW WITH YOUR CHAT ID FROM @userinfobot
-MY_CHAT_ID = "1556353947" 
+
+# YOUR SETTINGS
+MY_CHAT_ID = "1556353947"
+# Replace the URL below with your real Stripe/PayPal link when ready
+PAYMENT_URL = "https://buy.stripe.com/test_your_link_here" 
 
 if not TELEGRAM_TOKEN or not GOOGLE_API_KEY:
     print("❌ ERROR: Missing API keys!")
@@ -72,11 +75,23 @@ def handle_message(message):
     """
 
     try:
-        # Generate AI response
+        # 1. Generate AI response
         response = model.generate_content(prompt)
         bot.reply_to(message, response.text)
         
-        # LEAD NOTIFICATION LOGIC
+        # 2. SMART PAYMENT BUTTON (Detects buying intent)
+        buying_signals = ["quote", "price", "cost", "book", "appointment", "consultation", "pay"]
+        if any(signal in user_text.lower() for signal in buying_signals):
+            markup = telebot.types.InlineKeyboardMarkup()
+            btn = telebot.types.InlineKeyboardButton("💳 Secure Your Consultation", url=PAYMENT_URL)
+            markup.add(btn)
+            bot.send_message(
+                message.chat.id, 
+                "To prioritize your request and secure a slot with our Senior Partner, you may use our secure portal below:", 
+                reply_markup=markup
+            )
+
+        # 3. LEAD NOTIFICATION LOGIC
         # If the message contains 7 or more digits, it's likely a phone number
         if re.search(r'\d{7,}', user_text) and MY_CHAT_ID != "0":
             alert_text = f"🚨 NEW LEAD CAPTURED!\n\n👤 Name: {user_name}\n📍 Msg: {user_text}\n\nFollow up immediately!"
