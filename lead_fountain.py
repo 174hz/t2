@@ -6,6 +6,7 @@ import telebot
 import google.generativeai as genai
 import time
 import re
+from collections import defaultdict
 
 # =========================================================
 # 0. RENDER HEALTH CHECK & CONFIG
@@ -23,14 +24,16 @@ def run_health_check():
 threading.Thread(target=run_health_check, daemon=True).start()
 time.sleep(1)
 
-# API KEYS (Ensure these are set in Render Environment Variables)
+# API KEYS
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # YOUR SETTINGS
 MY_CHAT_ID = "1556353947"
-# Replace the URL below with your real Stripe/PayPal link when ready
 PAYMENT_URL = "https://buy.stripe.com/test_your_link_here" 
+
+# MEMORY STORAGE (Holds last 10 messages per user)
+user_history = defaultdict(list)
 
 if not TELEGRAM_TOKEN or not GOOGLE_API_KEY:
     print("❌ ERROR: Missing API keys!")
@@ -43,43 +46,53 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 print("🚀 Lead Fountain Ontario Concierge is starting up...")
 
 # =========================================================
-# 1. THE BRAIN (ONTARIO MASTER PROMPT)
+# 1. THE BRAIN (CONTEXT-AWARE PROMPT)
 # =========================================================
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
+    user_id = message.chat.id
     user_name = message.from_user.first_name
     user_text = message.text
     
-    print(f"📥 New message from {user_name}: {user_text}")
+    # 1. Update History (Store user message)
+    user_history[user_id].append(f"User: {user_text}")
+    if len(user_history[user_id]) > 10:
+        user_history[user_id].pop(0)
 
-    # Universal High-Ticket System Prompt for Ontario
+    # 2. Build Contextual Prompt
+    history_context = "\n".join(user_history[user_id])
+    
     prompt = f"""
-    You are the Senior Client Concierge for 'Lead Fountain Professional Services'. 
-    You represent elite local service providers across Ontario.
+    You are the Senior Client Concierge for 'Lead Fountain Professional Services' in Ontario.
     
-    YOUR ROLE:
-    1. Act as a high-level consultant. Be professional, sophisticated, and helpful.
-    2. Identify the user's specific project or problem (Roofing, Legal, HVAC, etc.).
-    3. POSITIONING: Frame the service as a premium investment, not a cheap fix.
+    CRITICAL INSTRUCTIONS:
+    - REVIEW THE HISTORY BELOW. If the user has already provided their location, project details, or name, DO NOT ask for them again.
+    - Be observant. If they say "Leaky roof in Guelph", acknowledge the urgency in Guelph immediately.
+    - If you have the project info and location, pivot immediately to asking for their Name and Phone Number to schedule the "Senior Partner".
+    - Avoid being repetitive. If you just asked a question, don't ask it again in a different way.
+
+    GOALS:
+    1. Identify the project scope and Ontario city.
+    2. Secure a Name and Phone Number for a follow-up.
+    3. Maintain an elite, professional, and efficient tone.
+
+    CONVERSATION HISTORY:
+    {history_context}
     
-    QUALIFICATION GOALS:
-    - Ask: "What is the scope of the project you're considering?"
-    - Ask: "What part of Ontario are you located in?"
-    - FINAL GOAL: Get their Name and Phone Number so a Senior Partner can provide a formal consultation.
-    
-    TONE: Expert, reassuring, and concise. No fluff.
-    
-    Context:
-    User Name: {user_name}
-    User Message: {user_text}
+    Response:
     """
 
     try:
-        # 1. Generate AI response
+        # Generate AI response
         response = model.generate_content(prompt)
-        bot.reply_to(message, response.text)
+        bot_reply = response.text
         
-        # 2. SMART PAYMENT BUTTON (Detects buying intent)
+        # Update History (Store bot response)
+        user_history[user_id].append(f"Assistant: {bot_reply}")
+        
+        bot.reply_to(message, bot_reply)
+        
+        # 3. SMART PAYMENT BUTTON (Detects buying intent)
         buying_signals = ["quote", "price", "cost", "book", "appointment", "consultation", "pay"]
         if any(signal in user_text.lower() for signal in buying_signals):
             markup = telebot.types.InlineKeyboardMarkup()
@@ -91,8 +104,7 @@ def handle_message(message):
                 reply_markup=markup
             )
 
-        # 3. LEAD NOTIFICATION LOGIC
-        # If the message contains 7 or more digits, it's likely a phone number
+        # 4. LEAD NOTIFICATION LOGIC
         if re.search(r'\d{7,}', user_text) and MY_CHAT_ID != "0":
             alert_text = f"🚨 NEW LEAD CAPTURED!\n\n👤 Name: {user_name}\n📍 Msg: {user_text}\n\nFollow up immediately!"
             bot.send_message(MY_CHAT_ID, alert_text)
@@ -100,7 +112,7 @@ def handle_message(message):
 
     except Exception as e:
         print(f"❌ Error: {e}")
-        bot.reply_to(message, "I'm reviewing your request. One of our specialists will be with you shortly. May I have your best contact number?")
+        bot.reply_to(message, "I am reviewing your details. Can I have your phone number to have a Senior Partner call you back?")
 
 # =========================================================
 # 2. START
