@@ -1,0 +1,4 @@
+name = "lead-fountain-bot"
+main = "lead_fountain.py"
+compatibility_date = "2024-03-18"
+compatibility_flags = ["python_workers"]
