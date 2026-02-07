@@ -1,8 +1,6 @@
 name = "lead-fountain-bot"
-main = "lead_fountain.py"
+main = "index.py"  # <--- Change this to index.py
 compatibility_date = "2026-02-05"
-
-# Use ONLY 'python_workers' for the modern runtime
 compatibility_flags = ["python_workers"]
 
 [[kv_namespaces]]
