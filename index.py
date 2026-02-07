@@ -9,12 +9,11 @@ class Default(WorkerEntrypoint):
                 body = await request.json()
                 chat_id = body["message"]["chat"]["id"]
 
-                # FIX 1: Access token safely using getattr to prevent crash
+                # Safe access to your variable
                 token = getattr(self.env, "TELEGRAM_TOKEN", None)
                 
                 if not token:
-                    # If token is missing, we stop here but don't crash the worker
-                    return Response("Missing TELEGRAM_TOKEN variable in Cloudflare Settings")
+                    return Response("Error: TELEGRAM_TOKEN not found in Cloudflare Settings.")
 
                 tg_url = f"https://api.telegram.org/bot{token}/sendMessage"
                 
@@ -27,7 +26,7 @@ class Default(WorkerEntrypoint):
                     "headers": {"Content-Type": "application/json"}
                 })
                 
-                # FIX 2: Use Response() instead of Response.new()
+                # Standard response for 2026 Python Workers
                 return Response("OK")
             except Exception as e:
                 return Response(f"Internal Error: {str(e)}")
