@@ -1,18 +1,16 @@
+from workers import Response, WorkerEntrypoint, fetch
 import json
-from js import Response, fetch
 
-class Default:
-    def __init__(self, env):
-        self.env = env
-
+class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        # 1. THE BOT LOGIC (POST requests)
+        # 1. HANDLE TELEGRAM BOT (POST)
         if request.method == "POST":
             try:
                 data = await request.json()
                 chat_id = data["message"]["chat"]["id"]
-                # Just a simple test reply to prove it works
-                reply = "Lead Fountain Concierge Active!"
+                
+                # Test response to prove the bot is alive
+                reply = "Lead Fountain Concierge is Active and Online!"
                 
                 tg_url = f"https://api.telegram.org/bot{self.env.TELEGRAM_TOKEN}/sendMessage"
                 await fetch(tg_url, {
@@ -20,20 +18,20 @@ class Default:
                     "body": json.dumps({"chat_id": chat_id, "text": reply}),
                     "headers": {"Content-Type": "application/json"}
                 })
-                return Response.new("OK")
-            except:
-                return Response.new("OK")
+                return Response("OK")
+            except Exception as e:
+                return Response(f"Error: {str(e)}")
 
-        # 2. THE WEBSITE LOGIC (GET requests)
-        # Paste your actual HTML code between the triple quotes below
+        # 2. HANDLE WEBSITE (GET)
+        # This keeps your website alive inside the bot
         html_site = """
         <!DOCTYPE html>
         <html>
         <head><title>Lead Fountain</title></head>
         <body style="font-family: sans-serif; text-align: center; padding: 50px;">
             <h1>Lead Fountain</h1>
-            <p>Our Senior Client Concierge is now on Telegram.</p>
+            <p>Our Senior Client Concierge is now active on Telegram.</p>
         </body>
         </html>
         """
-        return Response.new(html_site, headers={"Content-Type": "text/html"})
+        return Response(html_site, headers={"Content-Type": "text/html"})
