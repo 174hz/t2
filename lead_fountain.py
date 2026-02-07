@@ -1,80 +1,33 @@
-import os
-import http.server
-import socketserver
-import threading
-import telebot
-import google.generativeai as genai
-import time
+import json
 import re
-from collections import defaultdict
+import google.generativeai as genai
+from js import Response, fetch
 
 # =========================================================
-# 0. RENDER HEALTH CHECK & CONFIG
+# 1. THE BRAIN (CONTEXT-AWARE LOGIC)
 # =========================================================
-def run_health_check():
-    port = int(os.environ.get("PORT", 10000))
-    handler = http.server.SimpleHTTPRequestHandler
-    try:
-        with socketserver.TCPServer(("0.0.0.0", port), handler) as httpd:
-            print(f"✅ Health check server is ACTIVE on port {port}")
-            httpd.serve_forever()
-    except Exception as e:
-        print(f"Health check error: {e}")
+async def get_ai_reply(user_text, user_id, user_name, env):
+    genai.configure(api_key=env.GOOGLE_API_KEY)
+    model = genai.GenerativeModel('gemini-2.0-flash')
 
-threading.Thread(target=run_health_check, daemon=True).start()
-time.sleep(1)
+    # 1. RETRIEVE HISTORY FROM CLOUDFLARE KV
+    history_raw = await env.LEAD_HISTORY.get(str(user_id))
+    history_list = json.loads(history_raw) if history_raw else []
 
-# API KEYS
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-# YOUR SETTINGS
-MY_CHAT_ID = "1556353947"
-PAYMENT_URL = "https://buy.stripe.com/test_your_link_here" 
-
-# MEMORY STORAGE (Holds last 10 messages per user)
-user_history = defaultdict(list)
-
-if not TELEGRAM_TOKEN or not GOOGLE_API_KEY:
-    print("❌ ERROR: Missing API keys!")
-    exit(1)
-
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash')
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
-
-print("🚀 Lead Fountain Ontario Concierge is starting up...")
-
-# =========================================================
-# 1. THE BRAIN (CONTEXT-AWARE PROMPT)
-# =========================================================
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    user_id = message.chat.id
-    user_name = message.from_user.first_name
-    user_text = message.text
+    # 2. Update History
+    history_list.append(f"User: {user_text}")
+    if len(history_list) > 12:  # Keep it tight for token limits
+        history_list.pop(0)
     
-    # 1. Update History (Store user message)
-    user_history[user_id].append(f"User: {user_text}")
-    if len(user_history[user_id]) > 10:
-        user_history[user_id].pop(0)
-
-    # 2. Build Contextual Prompt
-    history_context = "\n".join(user_history[user_id])
+    history_context = "\n".join(history_list)
     
     prompt = f"""
     You are the Senior Client Concierge for 'Lead Fountain Professional Services' in Ontario.
     
     CRITICAL INSTRUCTIONS:
-    - REVIEW THE HISTORY BELOW. If the user has already provided their location, project details, or name, DO NOT ask for them again.
-    - Be observant. If they say "Leaky roof in Guelph", acknowledge the urgency in Guelph immediately.
-    - If you have the project info and location, pivot immediately to asking for their Name and Phone Number to schedule the "Senior Partner".
-    - Avoid being repetitive. If you just asked a question, don't ask it again in a different way.
-
-    GOALS:
-    1. Identify the project scope and Ontario city.
-    2. Secure a Name and Phone Number for a follow-up.
-    3. Maintain an elite, professional, and efficient tone.
+    - REVIEW HISTORY: If location/project/name is known, don't ask again.
+    - Urgency: Acknowledge local Ontario cities (Guelph, etc.) immediately.
+    - Pivot: Once scope is known, ask for Phone Number for a "Senior Partner" call.
 
     CONVERSATION HISTORY:
     {history_context}
@@ -82,40 +35,73 @@ def handle_message(message):
     Response:
     """
 
+    response = model.generate_content(prompt)
+    bot_reply = response.text
+
+    # 3. SAVE HISTORY BACK TO KV
+    history_list.append(f"Assistant: {bot_reply}")
+    await env.LEAD_HISTORY.put(str(user_id), json.dumps(history_list), {"expirationTtl": 3600}) # Expire after 1 hour of silence
+    
+    return bot_reply
+
+# =========================================================
+# 2. CLOUDFLARE HANDLER (WEBHOOK)
+# =========================================================
+async def on_fetch(request, env):
+    # Only process POST requests from Telegram
+    if request.method != "POST":
+        return Response.new("System Active", status=200)
+
     try:
-        # Generate AI response
-        response = model.generate_content(prompt)
-        bot_reply = response.text
+        data = await request.json()
+        if "message" not in data:
+            return Response.new("OK")
+
+        message = data["message"]
+        chat_id = message["chat"]["id"]
+        user_text = message.get("text", "")
+        user_name = message["from"].get("first_name", "Client")
+
+        # Get AI Response
+        bot_reply = await get_ai_reply(user_text, chat_id, user_name, env)
+
+        # Telegram API Config
+        tg_url = f"https://api.telegram.org/bot{env.TELEGRAM_TOKEN}/sendMessage"
         
-        # Update History (Store bot response)
-        user_history[user_id].append(f"Assistant: {bot_reply}")
-        
-        bot.reply_to(message, bot_reply)
-        
-        # 3. SMART PAYMENT BUTTON (Detects buying intent)
+        payload = {
+            "chat_id": chat_id,
+            "text": bot_reply
+        }
+
+        # 3. SMART PAYMENT BUTTON
         buying_signals = ["quote", "price", "cost", "book", "appointment", "consultation", "pay"]
         if any(signal in user_text.lower() for signal in buying_signals):
-            markup = telebot.types.InlineKeyboardMarkup()
-            btn = telebot.types.InlineKeyboardButton("💳 Secure Your Consultation", url=PAYMENT_URL)
-            markup.add(btn)
-            bot.send_message(
-                message.chat.id, 
-                "To prioritize your request and secure a slot with our Senior Partner, you may use our secure portal below:", 
-                reply_markup=markup
-            )
+            payload["reply_markup"] = {
+                "inline_keyboard": [[
+                    {"text": "💳 Secure Your Consultation", "url": env.PAYMENT_URL}
+                ]]
+            }
 
-        # 4. LEAD NOTIFICATION LOGIC
-        if re.search(r'\d{7,}', user_text) and MY_CHAT_ID != "0":
-            alert_text = f"🚨 NEW LEAD CAPTURED!\n\n👤 Name: {user_name}\n📍 Msg: {user_text}\n\nFollow up immediately!"
-            bot.send_message(MY_CHAT_ID, alert_text)
-            print(f"📢 Lead notification sent to Admin!")
+        # Send message via Fetch API
+        await fetch(tg_url, {
+            "method": "POST",
+            "body": json.dumps(payload),
+            "headers": {"Content-Type": "application/json"}
+        })
+
+        # 4. LEAD NOTIFICATION
+        if re.search(r'\d{7,}', user_text):
+            alert = {
+                "chat_id": env.MY_CHAT_ID,
+                "text": f"🚨 NEW LEAD!\n👤 Name: {user_name}\n📍 Msg: {user_text}"
+            }
+            await fetch(tg_url, {
+                "method": "POST",
+                "body": json.dumps(alert),
+                "headers": {"Content-Type": "application/json"}
+            })
+
+        return Response.new("OK")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
-        bot.reply_to(message, "I am reviewing your details. Can I have your phone number to have a Senior Partner call you back?")
-
-# =========================================================
-# 2. START
-# =========================================================
-print("📡 Concierge is now polling...")
-bot.infinity_polling()
+        return Response.new(str(e), status=500)
