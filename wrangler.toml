@@ -5,4 +5,4 @@ compatibility_flags = ["python_workers"]
 
 [[kv_namespaces]]
 binding = "LEAD_HISTORY"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "1c5cb82a3085400dbc218c91a73446a1"
