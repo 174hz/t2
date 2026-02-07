@@ -3,34 +3,34 @@ import json
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        # 1. BOT TRAFFIC (POST)
+        # 1. BOT TRAFFIC
         if request.method == "POST":
             try:
-                body = await request.json()
-                chat_id = body["message"]["chat"]["id"]
-
-                # Safe access to your variable
-                token = getattr(self.env, "TELEGRAM_TOKEN", None)
+                data = await request.json()
+                if "message" not in data:
+                    return Response("OK")
                 
-                if not token:
-                    return Response("Error: TELEGRAM_TOKEN not found in Cloudflare Settings.")
-
-                tg_url = f"https://api.telegram.org/bot{token}/sendMessage"
+                chat_id = data["message"]["chat"]["id"]
                 
-                await fetch(tg_url, {
-                    "method": "POST",
-                    "body": json.dumps({
-                        "chat_id": chat_id, 
-                        "text": "Lead Fountain Concierge is Online and Fixed!"
+                # Direct access to environment variables
+                token = self.env.TELEGRAM_TOKEN
+                
+                # Send the message
+                resp = await fetch(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    method="POST",
+                    body=json.dumps({
+                        "chat_id": chat_id,
+                        "text": "Hello! The Lead Fountain Concierge is now fully connected and ready to assist."
                     }),
-                    "headers": {"Content-Type": "application/json"}
-                })
+                    headers={"Content-Type": "application/json"}
+                )
                 
-                # Standard response for 2026 Python Workers
                 return Response("OK")
             except Exception as e:
-                return Response(f"Internal Error: {str(e)}")
+                # This helps us see errors in the 'Events' logs if Telegram rejects us
+                return Response(f"Error: {str(e)}")
 
-        # 2. WEBSITE TRAFFIC (GET)
-        html_site = "<h1>Lead Fountain Concierge</h1><p>Active on Telegram.</p>"
-        return Response(html_site, headers={"Content-Type": "text/html;charset=UTF-8"})
+        # 2. WEBSITE TRAFFIC
+        html = "<h1>Lead Fountain</h1><p>Senior Client Concierge is Online.</p>"
+        return Response(html, headers={"Content-Type": "text/html"})
