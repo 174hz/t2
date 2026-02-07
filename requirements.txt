@@ -1,2 +1,3 @@
-pyTelegramBotAPI
-google-generativeai git add requirements.txt
+python-telegram-bot
+google-generativeai
+
