@@ -1,7 +1,9 @@
 name = "lead-fountain-bot"
 main = "lead_fountain.py"
 compatibility_date = "2024-03-18"
-compatibility_flags = ["python_workers"]
+
+# THIS LINE IS CRITICAL:
+compatibility_flags = ["python_workers", "python_v2"]
 
 [[kv_namespaces]]
 binding = "LEAD_HISTORY"
