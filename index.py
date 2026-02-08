@@ -3,30 +3,32 @@ import json
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        # 1. BROWSER CHECK
+        # 1. BROWSER STATUS CHECK
         if request.method == "GET":
-            return Response("Bot Status: ONLINE. Send a message to the bot.")
+            return Response("Status: Online and listening for Telegram.")
 
         # 2. TELEGRAM MESSAGE HANDLER
         try:
-            # Parse the incoming JSON from Telegram
-            body = await request.json()
+            # Parse the incoming message
+            data = await request.json()
             
-            # Extract Chat ID
-            if "message" in body:
-                chat_id = body["message"]["chat"]["id"]
-                
-                # We return the instructions DIRECTLY to Telegram as the HTTP Response
-                # This is the most reliable way to avoid connection/token errors.
-                reply = {
-                    "method": "sendMessage",
-                    "chat_id": chat_id,
-                    "text": "The bot is now responding via direct callback!"
-                }
-                
+            if "message" in data:
+                chat_id = data["message"]["chat"]["id"]
+                user_text = data["message"].get("text", "")
+
+                # THE DIRECT CALLBACK:
+                # We return the reply directly to Telegram as the HTTP Response.
+                # No token or fetch() required!
                 return Response(
-                    json.dumps(reply),
+                    json.dumps({
+                        "method": "sendMessage",
+                        "chat_id": chat_id,
+                        "text": f"Success! I received: {user_text}"
+                    }),
                     headers={"Content-Type": "application/json"}
                 )
-        except Exception as e:
-            # If there's an error, returning
+
+            return Response("OK")
+        except Exception:
+            # If parsing fails, we return a 200 so Telegram stops retrying
+            return Response("OK")
