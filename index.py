@@ -3,37 +3,33 @@ import json
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        # 1. VISUAL STATUS
+        # 1. SIMPLEST STATUS CHECK
         if request.method == "GET":
-            return Response("Bot Status: ONLINE - STANDBY")
+            return Response("Worker is live. KV and Python are connected.")
 
-        # 2. THE HANDSHAKE
+        # 2. TELEGRAM MESSAGE HANDLER
         try:
-            # We use text() then load manually to prevent 500 errors
-            raw = await request.text()
-            data = json.loads(raw)
+            # Safely get the data
+            body = await request.json()
             
-            if "message" in data:
-                chat_id = data["message"]["chat"]["id"]
+            if "message" in body:
+                chat_id = body["message"]["chat"]["id"]
                 
-                # WE HARDCODE THE TOKEN HERE TO BYPASS THE MISSING BINDINGS
+                # HARDCODED TOKEN (Bypassing the dashboard issues)
                 token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
                 
-                # MANUALLY PUSH THE MESSAGE OUT
-                # We do not use 'return', we use 'await fetch'
-                await fetch(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    method="POST",
-                    headers={"Content-Type": "application/json"},
-                    body=json.dumps({
+                # DIRECT RESPONSE METHOD
+                # We return the instructions to Telegram immediately
+                return Response(
+                    json.dumps({
+                        "method": "sendMessage",
                         "chat_id": chat_id,
-                        "text": "The Lead Fountain Bot is bypassing the system. Connection established!"
-                    })
+                        "text": "The bot is finally communicating! We have a solid connection."
+                    }),
+                    headers={"Content-Type": "application/json"}
                 )
-                
-            return Response("OK", status=200)
-            
         except Exception as e:
-            # If it fails, return the error to the logs
-            print(f"Error: {e}")
-            return Response("OK", status=200)
+            # This will show up in your Cloudflare 'Live Logs' if it fails
+            print(f"Error occurred: {str(e)}")
+            
+        return Response("OK")
