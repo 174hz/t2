@@ -15,9 +15,9 @@ class Default(WorkerEntrypoint):
             api_key = "AIzaSyBI639cobspNH8ptx9z2HQKRVyZJ7Yl9xQ" 
             tg_token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
             
-            # --- CALL AI (Updated Model Name) ---
-            # We switched from gemini-1.5-flash to gemini-pro for stability
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+            # --- CALL AI (Moving to Stable v1) ---
+            # We are changing v1beta to v1 and using the latest gemini-1.5-flash
+            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
             
             payload = {
                 "contents": [{
@@ -33,8 +33,8 @@ class Default(WorkerEntrypoint):
             if 'candidates' in data:
                 bot_reply = data['candidates'][0]['content']['parts'][0]['text']
             else:
-                # If Google sends back an error, we'll see it here
-                bot_reply = f"System Note: {json.dumps(data)}"
+                # This will tell us if there's still a version mismatch
+                bot_reply = f"Technical Note: {json.dumps(data)}"
 
             # --- SEND TO TELEGRAM ---
             await fetch(
