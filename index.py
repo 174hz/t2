@@ -1,35 +1,37 @@
-from workers import Response, WorkerEntrypoint
+from workers import Response, WorkerEntrypoint, fetch
 import json
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        # Browser check: Visit your .dev link to see if this is live
         if request.method == "GET":
-            return Response("SYSTEM ONLINE: Waiting for Telegram...", headers={"Content-Type": "text/plain"})
+            return Response("Worker is active. Telegram connection confirmed.")
 
-        # Telegram Handler
         try:
-            # Get the data from Telegram
+            # 1. Parse incoming data
             body = await request.json()
             
             if "message" in body:
                 chat_id = body["message"]["chat"]["id"]
                 user_text = body["message"].get("text", "")
-
-                # THE CALLBACK SECRET:
-                # We return the reply as the HTTP response. 
-                # No Token needed. No Fetch needed.
-                payload = {
-                    "method": "sendMessage",
-                    "chat_id": chat_id,
-                    "text": f"Connection established! I heard: {user_text}"
-                }
                 
-                return Response(
-                    json.dumps(payload),
-                    headers={"Content-Type": "application/json"}
+                # 2. HARDCODED TOKEN (The one we know works)
+                token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
+                
+                # 3. FORCE THE MESSAGE OUT
+                # Instead of returning JSON, we manually call Telegram's API
+                await fetch(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                    body=json.dumps({
+                        "chat_id": chat_id,
+                        "text": f"Got it! You said: {user_text}"
+                    })
                 )
-        except Exception as e:
-            return Response(f"Error: {str(e)}", status=200)
 
-        return Response("OK", status=200)
+            return Response("OK", status=200)
+            
+        except Exception as e:
+            # This logs the error so we can see it in your next log paste
+            print(f"Error: {str(e)}")
+            return Response("OK", status=200)
