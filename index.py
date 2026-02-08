@@ -15,8 +15,9 @@ class Default(WorkerEntrypoint):
             api_key = "AIzaSyBI639cobspNH8ptx9z2HQKRVyZJ7Yl9xQ" 
             tg_token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
             
-            # --- CALL AI ---
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            # --- CALL AI (Updated Model Name) ---
+            # We switched from gemini-1.5-flash to gemini-pro for stability
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
             
             payload = {
                 "contents": [{
@@ -28,12 +29,12 @@ class Default(WorkerEntrypoint):
             res = await fetch(url, method="POST", body=json.dumps(payload))
             data = await res.json()
             
-            # --- CAREFUL EXTRACTION ---
+            # --- EXTRACTION ---
             if 'candidates' in data:
                 bot_reply = data['candidates'][0]['content']['parts'][0]['text']
             else:
-                # This will tell us if Google rejected the API key
-                bot_reply = f"System Note: AI rejected the request. Check API Key status. {json.dumps(data)}"
+                # If Google sends back an error, we'll see it here
+                bot_reply = f"System Note: {json.dumps(data)}"
 
             # --- SEND TO TELEGRAM ---
             await fetch(
@@ -46,6 +47,4 @@ class Default(WorkerEntrypoint):
             return Response("OK", status=200)
             
         except Exception as e:
-            # If it still fails, the bot will tell you the exact error code
             return Response("OK", status=200)
-              
