@@ -4,29 +4,40 @@ import json
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         if request.method == "GET":
-            return Response("Diagnostic Mode: Active.")
+            return Response("Lead-Fountain Engine: 2.0 Flash Online.")
 
         try:
             body = await request.json()
             chat_id = str(body["message"]["chat"]["id"])
+            user_text = body["message"].get("text", "")
             
             # --- CONFIG ---
-            api_key = "AIzaSyBI639cobspNH8ptx9z2HQKRVyZJ7Yl9xQ" 
+            api_key = "PASTE_YOUR_AIza_KEY_HERE" 
             tg_token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
             
-            # --- DIAGNOSTIC CALL ---
-            # This asks Google: "What models can I actually use?"
-            diag_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            # --- CALL AI (Using Gemini 2.0 Flash) ---
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
             
-            res = await fetch(diag_url, method="GET")
+            payload = {
+                "contents": [{
+                    "parts": [{"text": (
+                        "You are the AI Assistant for Lead-Fountain. "
+                        "A customer is reaching out about a home service. "
+                        "Acknowledge their specific issue and location, then politely ask for their phone number "
+                        "so a local specialist can call them. Keep it brief and professional.\n\n"
+                        f"User Message: {user_text}"
+                    )}]
+                }]
+            }
+
+            res = await fetch(url, method="POST", body=json.dumps(payload))
             data = await res.json()
             
-            if 'models' in data:
-                # Get the first 5 available model names
-                model_names = [m['name'] for m in data['models']]
-                bot_reply = "I found these models on your account: " + ", ".join(model_names[:5])
+            # --- EXTRACTION ---
+            if 'candidates' in data:
+                bot_reply = data['candidates'][0]['content']['parts'][0]['text']
             else:
-                bot_reply = f"Diagnostic Error: {json.dumps(data)}"
+                bot_reply = "I'm sorry, I'm having trouble connecting. Please try again in a moment!"
 
             # --- SEND TO TELEGRAM ---
             await fetch(
