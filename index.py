@@ -1,41 +1,36 @@
-from workers import Response, WorkerEntrypoint
+from workers import Response, WorkerEntrypoint, fetch
 import json
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        # 1. BROWSER STATUS (GET)
+        # 1. BROWSER STATUS
         if request.method == "GET":
-            return Response("<h1>Lead Fountain</h1><p>Status: Monitoring Live Updates.</p>", 
+            return Response("<h1>Lead Fountain</h1><p>Emergency Bypass Mode: Active.</p>", 
                             headers={"Content-Type": "text/html"})
 
-        # 2. TELEGRAM HANDLER (POST)
+        # 2. BOT HANDLING
         try:
             body = await request.json()
             if "message" not in body:
-                return Response(json.dumps({"ok": True}), headers={"Content-Type": "application/json"})
+                return Response("OK")
 
             chat_id = body["message"]["chat"]["id"]
-            user_text = body["message"].get("text", "")
-
-            # ACCESS VARIABLES
-            # Since these are in wrangler.toml, they are on self.env
-            token = self.env.TELEGRAM_TOKEN
-
-            # AI Logic (Simplified for immediate speed)
-            reply_text = f"Lead Fountain AI has received your message: '{user_text}'. How can I help?"
-
-            # THE DIRECT CALLBACK METHOD:
-            # We don't call 'fetch' to reply. We return the reply directly to Telegram's request.
-            # This is 100% reliable because it doesn't rely on outbound networking.
-            return Response(
-                json.dumps({
-                    "method": "sendMessage",
-                    "chat_id": chat_id,
-                    "text": reply_text
-                }),
-                headers={"Content-Type": "application/json"}
+            
+            # HARDCODED TOKEN - Bypassing the broken Cloudflare Variables
+            token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
+            
+            # SEND REPLY
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            await fetch(url, 
+                method="POST", 
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "chat_id": chat_id, 
+                    "text": "The Bypass is working! I can finally hear you."
+                })
             )
 
+            return Response("OK")
+
         except Exception as e:
-            # Always return a 200 OK so Telegram doesn't retry a broken script
-            return Response(json.dumps({"ok": True, "error": str(e)}), headers={"Content-Type": "application/json"})
+            return Response("OK")
