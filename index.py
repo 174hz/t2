@@ -3,32 +3,33 @@ import json
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        # 1. BROWSER STATUS CHECK
+        # Browser check: Visit your .dev link to see if this is live
         if request.method == "GET":
-            return Response("Status: Online and listening for Telegram.")
+            return Response("SYSTEM ONLINE: Waiting for Telegram...", headers={"Content-Type": "text/plain"})
 
-        # 2. TELEGRAM MESSAGE HANDLER
+        # Telegram Handler
         try:
-            # Parse the incoming message
-            data = await request.json()
+            # Get the data from Telegram
+            body = await request.json()
             
-            if "message" in data:
-                chat_id = data["message"]["chat"]["id"]
-                user_text = data["message"].get("text", "")
+            if "message" in body:
+                chat_id = body["message"]["chat"]["id"]
+                user_text = body["message"].get("text", "")
 
-                # THE DIRECT CALLBACK:
-                # We return the reply directly to Telegram as the HTTP Response.
-                # No token or fetch() required!
+                # THE CALLBACK SECRET:
+                # We return the reply as the HTTP response. 
+                # No Token needed. No Fetch needed.
+                payload = {
+                    "method": "sendMessage",
+                    "chat_id": chat_id,
+                    "text": f"Connection established! I heard: {user_text}"
+                }
+                
                 return Response(
-                    json.dumps({
-                        "method": "sendMessage",
-                        "chat_id": chat_id,
-                        "text": f"Success! I received: {user_text}"
-                    }),
+                    json.dumps(payload),
                     headers={"Content-Type": "application/json"}
                 )
+        except Exception as e:
+            return Response(f"Error: {str(e)}", status=200)
 
-            return Response("OK")
-        except Exception:
-            # If parsing fails, we return a 200 so Telegram stops retrying
-            return Response("OK")
+        return Response("OK", status=200)
