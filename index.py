@@ -14,7 +14,7 @@ class Default(WorkerEntrypoint):
             user_text = body["message"].get("text", "")
             
             # --- CONFIG ---
-            api_key = "AIzaSyBI639cobspNH8ptx9z2HQKRVyZJ7Yl9xQ" 
+            api_key = "PASTE_YOUR_AIza_KEY_HERE" 
             tg_token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
 
             # --- 1. GET OLD HISTORY (Memory) ---
