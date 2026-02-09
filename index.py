@@ -4,7 +4,7 @@ import re
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        if request.method == "GET": return Response("Lead-Fountain: Online.")
+        if request.method == "GET": return Response("Lead-Fountain: Active.")
 
         try:
             body = await request.json()
@@ -16,47 +16,44 @@ class Default(WorkerEntrypoint):
             # --- CONFIG ---
             api_key = getattr(self.env, "GOOGLE_API_KEY", None)
             tg_token = getattr(self.env, "TELEGRAM_TOKEN", None)
-            my_admin_id = getattr(self.env, "MY_CHAT_ID", None)
+            my_admin_id = str(getattr(self.env, "MY_CHAT_ID", None))
 
-            # --- 1. SMART SCAN (Human Logic) ---
-            # Check if there is a 10-digit number anywhere in the text
-            has_phone = re.search(r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', user_text)
-            # Check if they provided a name (rough check)
-            has_name = any(word in user_text.lower() for word in ["my name", "i'm", "i am", "this is"]) or len(user_text.split()) > 6
-
-            # --- 2. THE AI BRAIN CALL ---
-            # Using the most stable production path
-            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
-            
-            prompt = (
-                "You are a roofing intake bot. You MUST get the user's NAME and PHONE. "
-                "If they are missing, ask for them politely. User said: "
+            # --- 1. BRANDED AI PROMPT ---
+            # We explicitly tell the AI to use your premium branding phrases
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            brand_prompt = (
+                "You are the Lead-Fountain Assistant. You must be professional and premium. "
+                "Your goal is to get the user's Name, Phone Number, and Best Time to call. "
+                "Always mention that we will have one of our 'vetted and verified specialists' contact them. "
+                "User says: "
             )
-            
-            ai_res = await fetch(url, method="POST", body=json.dumps({"contents": [{"parts": [{"text": f"{prompt} {user_text}"}]}]}))
-            ai_data = await ai_res.json()
 
-            # --- 3. DECISION ENGINE ---
+            # --- 2. THE AI CALL ---
             bot_reply = ""
-            if 'candidates' in ai_data:
+            try:
+                ai_res = await fetch(url, method="POST", body=json.dumps({"contents": [{"parts": [{"text": f"{brand_prompt} {user_text}"}]}]}))
+                ai_data = await ai_res.json()
                 bot_reply = ai_data['candidates'][0]['content']['parts'][0]['text']
-            else:
-                # REINFORCED FALLBACK: If AI is down, we check the 'Smart Scan' results
-                if not has_phone:
-                    bot_reply = "I've noted the leak in Thorold. To have a specialist contact you, what is the best phone number to reach you at?"
-                elif not has_name:
-                    bot_reply = "Got the number! And who should we ask for when we call?"
-                else:
-                    bot_reply = "Perfect. What is the best time today for our specialist to give you a call?"
+            except:
+                # PREMIUM FALLBACK: Used if AI fails to connect
+                bot_reply = (
+                    "Thanks for reaching out to us. May I have your name, the phone number where you can be reached, "
+                    "and the time that's most convenient? I will then have one of our vetted and verified specialists contact you."
+                )
 
-            # --- 4. ADMIN ALERT ---
-            if has_phone or "Thorold" in user_text:
-                alert_text = f"🚨 **LEAD DETECTED** 🚨\n\n**User:** {user_text}"
+            # --- 3. PRIVATE ADMIN ALERT (Only to You) ---
+            # We check if it's a lead and ensure the message goes to the admin, NOT the user.
+            is_lead_info = re.search(r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', user_text) or "leak" in user_text.lower()
+            
+            if is_lead_info and my_admin_id:
+                alert_text = f"💰 **LEAD CAPTURED** 💰\n\n**Details:** {user_text}\n**Chat ID:** {chat_id}"
+                # Send to ADMIN
                 await fetch(f"https://api.telegram.org/bot{tg_token}/sendMessage",
                     method="POST", headers={"Content-Type": "application/json"},
                     body=json.dumps({"chat_id": my_admin_id, "text": alert_text}))
 
-            # --- 5. REPLY TO CUSTOMER ---
+            # --- 4. PUBLIC CUSTOMER REPLY (Only to Customer) ---
+            # If the admin is testing, they will see this too.
             await fetch(f"https://api.telegram.org/bot{tg_token}/sendMessage",
                 method="POST", headers={"Content-Type": "application/json"},
                 body=json.dumps({"chat_id": chat_id, "text": bot_reply}))
