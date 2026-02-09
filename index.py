@@ -4,7 +4,7 @@ import re
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        if request.method == "GET": return Response("Lead-Fountain: Status Active.")
+        if request.method == "GET": return Response("Lead-Fountain: Online.")
 
         try:
             body = await request.json()
@@ -14,63 +14,54 @@ class Default(WorkerEntrypoint):
             user_text = body["message"].get("text", "")
             
             # --- CONFIG ---
-            # Make sure these names match your Cloudflare Variables exactly!
-            api_key = self.env.GOOGLE_API_KEY 
+            # IMPORTANT: Check that 'GOOGLE_API_KEY' is the EXACT name in Cloudflare Settings
+            api_key = getattr(self.env, "GOOGLE_API_KEY", None)
             tg_token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
             my_admin_id = "1556353947" 
 
-            # --- 1. MEMORY CHECK ---
-            history = ""
-            try:
-                kv = getattr(self.env, "LEAD_HISTORY", None)
-                if kv:
-                    history = await kv.get(chat_id) or ""
-                    history = history[-800:] # Keep only the very recent stuff
-            except:
-                history = "" # Skip memory if KV is broken
-
+            # --- 1. MEMORY ---
+            kv = getattr(self.env, "LEAD_HISTORY", None)
+            history = await kv.get(chat_id) or "" if kv else ""
             context = f"{history}\nUser: {user_text}"
 
             # --- 2. AI CALL ---
-            system_prompt = (
-                "You are the Lead-Fountain Intake Bot. Collect: Name, Phone, Location, Job Scope. "
-                "Keep it brief. If info is missing, ask for it."
-            )
-            
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-            payload = {"contents": [{"parts": [{"text": f"{system_prompt}\n\nContext: {context}"}]}]}
-
-            ai_res = await fetch(url, method="POST", body=json.dumps(payload))
-            ai_data = await ai_res.json()
-            
-            # Extract the AI's words
-            if 'candidates' in ai_data:
-                bot_reply = ai_data['candidates'][0]['content']['parts'][0]['text']
+            bot_reply = ""
+            if api_key:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+                payload = {"contents": [{"parts": [{"text": f"You are a roofing lead bot. Collect Name, Phone, Location, and Scope. History: {context}"}]}]}
+                
+                ai_res = await fetch(url, method="POST", body=json.dumps(payload))
+                ai_data = await ai_res.json()
+                
+                if 'candidates' in ai_data:
+                    bot_reply = ai_data['candidates'][0]['content']['parts'][0]['text']
+                else:
+                    # This tells us if the API Key is invalid or empty
+                    bot_reply = f"System Note: AI Error - {json.dumps(ai_data)[:100]}"
             else:
-                bot_reply = "I've received your message. What is the best phone number to reach you at?"
+                bot_reply = "System Note: GOOGLE_API_KEY not found in Cloudflare Variables."
 
             # --- 3. ALERT (ONLY TO YOU) ---
             if re.search(r'\d{3}[-\.\s]??\d{3}[-\.\s]??\d{4}', user_text):
-                alert_payload = {"chat_id": my_admin_id, "text": f"💰 **LEAD:** {user_text}"}
+                alert_text = f"💰 **NEW LEAD** 💰\n\n**User:** {user_text}\n\n**History:** {history[-200:]}"
                 await fetch(f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                            method="POST", headers={"Content-Type": "application/json"},
-                            body=json.dumps(alert_payload))
+                    method="POST", headers={"Content-Type": "application/json"},
+                    body=json.dumps({"chat_id": my_admin_id, "text": alert_text}))
 
-            # --- 4. REPLY TO CUSTOMER ---
-            await fetch(f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                method="POST", headers={"Content-Type": "application/json"},
-                body=json.dumps({"chat_id": chat_id, "text": bot_reply}))
+            # --- 4. REPLY (ONLY TO CUSTOMER) ---
+            # If the chat is NOT the admin, OR if it's the admin doing a test, send the AI reply
+            if chat_id != my_admin_id or "Ajax" in user_text:
+                # If the bot_reply is still empty, use a polite backup
+                final_text = bot_reply if bot_reply else "Thanks! What's the best time to call you?"
+                await fetch(f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                    method="POST", headers={"Content-Type": "application/json"},
+                    body=json.dumps({"chat_id": chat_id, "text": final_text}))
 
-            # --- 5. SAVE NEW HISTORY ---
-            try:
-                if kv:
-                    new_mem = f"{history}\nUser: {user_text}\nAI: {bot_reply}"
-                    await kv.put(chat_id, new_mem[-1000:])
-            except:
-                pass
+            # --- 5. SAVE ---
+            if kv:
+                await kv.put(chat_id, f"{context}\nAI: {bot_reply}"[-1000:])
 
             return Response("OK", status=200)
-
+            
         except Exception as e:
-            # This is the 'Panic' reply so you know exactly what broke
-            return Response(f"Error: {str(e)}", status=200)
+            return Response("OK", status=200)
