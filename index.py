@@ -17,7 +17,7 @@ class Default(WorkerEntrypoint):
             api_key = self.env.GOOGLE_API_KEY
             tg_token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
             # Ensure this is YOUR chat ID (e.g., 67493201)
-            my_admin_id = "PASTE_YOUR_PERSONAL_ID_HERE" 
+            my_admin_id = "1556353947" 
 
             # --- 1. MEMORY ---
             kv = getattr(self.env, "LEAD_HISTORY", None)
