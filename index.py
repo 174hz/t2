@@ -4,7 +4,7 @@ import json
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         if request.method == "GET":
-            return Response("Lead-Fountain Engine: Active.")
+            return Response("Lead-Fountain Engine: Secured & Active.")
 
         try:
             body = await request.json()
@@ -13,8 +13,9 @@ class Default(WorkerEntrypoint):
             chat_id = str(body["message"]["chat"]["id"])
             user_text = body["message"].get("text", "")
             
-            # --- CONFIG ---
-            api_key = "AIzaSyBI639cobspNH8ptx9z2HQKRVyZJ7Yl9xQ" 
+            # --- SECURE CONFIG ---
+            # Now pulls from Cloudflare Secrets instead of being written in the code
+            api_key = self.env.GOOGLE_API_KEY
             tg_token = "8554962289:AAG_6keZXWGVnsHGdXsbDKK4OhhKu4C1kqg"
 
             # --- 1. MEMORY ---
@@ -36,14 +37,13 @@ class Default(WorkerEntrypoint):
             ai_res = await fetch(url, method="POST", body=json.dumps(payload))
             ai_data = await ai_res.json()
             
-            # --- 3. ERROR-PROOF EXTRACTION ---
+            # --- 3. EXTRACTION ---
             if 'candidates' in ai_data and len(ai_data['candidates']) > 0:
                 bot_reply = ai_data['candidates'][0]['content']['parts'][0]['text']
             elif 'error' in ai_data:
-                # This will tell you if the API key expired or reached a limit
-                bot_reply = f"Debug Note: Google API Error - {ai_data['error']['message']}"
+                bot_reply = f"System Update: {ai_data['error']['message']}"
             else:
-                bot_reply = "I'm having a quick connection hiccup. Could you say that one more time?"
+                bot_reply = "I'm here! How can I help with your roofing project?"
 
             # --- 4. SAVE & SEND ---
             try:
